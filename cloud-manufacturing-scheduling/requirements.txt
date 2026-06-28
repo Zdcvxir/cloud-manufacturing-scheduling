@@ -1,2 +1,0 @@
-# Required only for gurobi_model.py. The VNS scripts use the Python standard library.
-gurobipy>=11.0.0
