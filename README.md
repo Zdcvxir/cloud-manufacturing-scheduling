@@ -1,4 +1,4 @@
-# Parallel-Batch Scheduling with Preventive Maintenance
+# Scheduling in a cloud manufacturing environment with deteriorating effects and maintenance activities
 
 This repository contains the code used for a parallel-batch scheduling problem
 with position-dependent processing times and preventive maintenance decisions.
