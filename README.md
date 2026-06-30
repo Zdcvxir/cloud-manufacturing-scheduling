@@ -1,11 +1,11 @@
-# Scheduling in a cloud manufacturing environment with deteriorating effects and maintenance activities
+# Cloud Manufacturing Scheduling with Maintenance
 
-This repository contains the code used for a parallel-batch scheduling problem
-with position-dependent processing times and preventive maintenance decisions.
-It includes:
+This repository contains the code used for a time-slot-based cloud manufacturing
+scheduling problem with serial batching, position-dependent deterioration,
+corrective maintenance, and preventive maintenance. It includes:
 
-- `vns.py`: the full Variable Neighborhood Search (VNS) heuristic.
-- `simplified_vns.py`: a lighter VNS variant with random insertion shaking.
+- `vns.py`: the Variable Neighborhood Search (VNS) used as the main metaheuristic.
+- `lim_vns.py`: the less-is-more VNS (LIM-VNS) used for comparative evaluation.
 - `gurobi_model.py`: the exact mixed-integer programming model implemented with
   Gurobi.
 - `config.py`: the benchmark instance and model parameters.
@@ -27,7 +27,7 @@ If you only want to run the VNS heuristics, `gurobipy` is not required.
 
 ## Quick Start
 
-Run the full VNS heuristic with the default experimental settings:
+Run VNS with the default experimental settings:
 
 ```bash
 python vns.py
@@ -39,10 +39,10 @@ Run one short reproducibility test:
 python vns.py --runs 1 --time-limit 5 --seed 42
 ```
 
-Run the simplified VNS variant:
+Run LIM-VNS:
 
 ```bash
-python simplified_vns.py --runs 1 --time-limit 5 --seed 42
+python lim_vns.py --runs 1 --time-limit 5 --seed 42
 ```
 
 Build and solve the exact Gurobi model:
@@ -95,10 +95,9 @@ starts.
 
 ## Outputs
 
-The VNS scripts print the best objective value, preventive-maintenance policy,
-slot occupancy, and cost breakdown. Unless `--no-output` is set, they also write
-a tab-separated convergence curve next to the script or to the path given by
-`--output`.
+The VNS scripts print the best objective value and slot occupancy. Unless
+`--no-output` is set, they also write a tab-separated convergence curve next to
+the script or to the path given by `--output`.
 
 ## License
 
