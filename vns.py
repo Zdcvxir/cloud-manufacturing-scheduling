@@ -174,7 +174,6 @@ def evaluate_schedule(schedule: Schedule) -> tuple[float, list[int]]:
 
 
 def encode_solution(slot_jobs: Schedule) -> Assignment:
-    """Convert a slot-to-jobs dictionary into a job-to-slot assignment list."""
     assignment = [0] * N
     for slot_id, jobs in slot_jobs.items():
         for job_id in jobs:
@@ -183,7 +182,6 @@ def encode_solution(slot_jobs: Schedule) -> Assignment:
 
 
 def decode_solution(assignment: Assignment) -> Schedule:
-    """Convert a job-to-slot assignment list into sorted slot job lists."""
     slot_jobs: Schedule = {slot: [] for slot in range(1, T + 1)}
     for job_index, slot_id in enumerate(assignment):
         if slot_id != 0:
@@ -196,7 +194,6 @@ def decode_solution(assignment: Assignment) -> Schedule:
 
 
 def shake_n1(assignment: Assignment, start_time: float, time_limit: float) -> Assignment:
-    """Randomly reassign two jobs."""
     del start_time, time_limit
     new_assignment = assignment[:]
     job_1, job_2 = random.sample(range(N), 2)
@@ -206,7 +203,6 @@ def shake_n1(assignment: Assignment, start_time: float, time_limit: float) -> As
 
 
 def shake_n2(assignment: Assignment, start_time: float, time_limit: float) -> Assignment:
-    """Swap two blocks of assignments."""
     del start_time, time_limit
     if N < 2 * BLOCK_LEN:
         return _swap_two_jobs(assignment)
@@ -226,7 +222,6 @@ def shake_n2(assignment: Assignment, start_time: float, time_limit: float) -> As
 
 
 def shake_n3(assignment: Assignment, start_time: float, time_limit: float) -> Assignment:
-    """Remove one occupied slot and greedily reinsert its jobs."""
     slot_jobs = _assignment_to_full_slot_dict(assignment)
     non_empty_slots = [slot for slot, jobs in slot_jobs.items() if jobs]
     if not non_empty_slots:
@@ -269,7 +264,6 @@ def shake_n3(assignment: Assignment, start_time: float, time_limit: float) -> As
 
 
 def shake_n4(assignment: Assignment, start_time: float, time_limit: float) -> Assignment:
-    """Remove two occupied slots and reinsert jobs by regret ordering."""
     slot_jobs = _assignment_to_full_slot_dict(assignment)
     non_empty_slots = [slot for slot, jobs in slot_jobs.items() if jobs]
     if len(non_empty_slots) < 2:
@@ -345,7 +339,6 @@ NEIGHBORHOODS: list[Neighborhood] = [shake_n1, shake_n2, shake_n3, shake_n4]
 
 
 def local_search(assignment: Assignment, start_time: float, time_limit: float) -> Assignment:
-    """Improve an assignment with the three local search neighborhoods."""
     current_assignment = assignment[:]
     current_cost, _ = evaluate_schedule(decode_solution(current_assignment))
 
@@ -524,7 +517,6 @@ def variable_neighborhood_search(
 
 
 def interpolate_cost(history: History, target_time: float) -> float:
-    """Return the best-known cost at target_time using a step function."""
     if target_time <= history[0][0]:
         return history[0][1]
     if target_time >= history[-1][0]:
@@ -602,7 +594,6 @@ def print_single_run_summary(
     best_schedule: Schedule,
     best_cost: float,
 ) -> None:
-    """Print solution details for a single run."""
     print(f"\nBest total cost: {best_cost:.2f}")
     print("\n===== Best Schedule =====")
     for slot in sorted(best_schedule):
@@ -616,7 +607,6 @@ def print_multi_run_summary(
     costs: list[float],
     occupancies: list[int],
 ) -> None:
-    """Print aggregate statistics across independent runs."""
     num_runs = len(costs)
     average_cost = sum(costs) / num_runs
     average_occupancy = sum(occupancies) / num_runs

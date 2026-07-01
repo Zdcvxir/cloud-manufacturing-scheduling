@@ -40,7 +40,6 @@ MAX_STAGNATION = 60
 
 
 def random_initial_solution(max_attempts: int = 1000) -> Schedule:
-    """Generate the best feasible random initial solution found within a budget."""
     best_cost = float("inf")
     best_schedule: Schedule | None = None
 
@@ -63,7 +62,6 @@ def random_initial_solution(max_attempts: int = 1000) -> Schedule:
 
 
 def shake_insert(assignment: Assignment, strength: int = 1) -> Assignment:
-    """Move ``strength`` randomly selected jobs to different random slots."""
     new_assignment = assignment[:]
 
     for _ in range(strength):
@@ -78,7 +76,6 @@ def shake_insert(assignment: Assignment, strength: int = 1) -> Assignment:
 
 
 def local_search(assignment: Assignment, start_time: float, time_limit: float) -> Assignment:
-    """Run a compact random local search using swap and insertion moves."""
     current_assignment = assignment[:]
     current_cost, _ = evaluate_schedule(decode_solution(current_assignment))
     no_improve_batches = 0
