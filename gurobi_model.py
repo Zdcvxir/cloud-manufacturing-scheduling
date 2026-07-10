@@ -69,6 +69,7 @@ def build_model(time_limit: float = 3600.0) -> Any:
     V_blr = model.addVars(max_batches, n_slots, n_jobs, lb=0.0, vtype=GRB.CONTINUOUS, name="V_blr")
     t_ls = model.addVars(n_slots, lb=0.0, vtype=GRB.CONTINUOUS, name="t_ls")
     t_le = model.addVars(n_slots, lb=0.0, vtype=GRB.CONTINUOUS, name="t_le")
+    kr = model.addVars(n_jobs, lb=0.0, vtype=GRB.CONTINUOUS, name="kr")
 
     prefix_slot_lengths = [0.0]
     for slot_length in slot_lengths:
@@ -159,14 +160,17 @@ def build_model(time_limit: float = 3600.0) -> Any:
                 == gp.quicksum(X[batch, slot, job] for job in range(n_jobs))
             )
 
-    # Formula (10): continuity of positions within the same batch-time-slot pair.
-    for batch in range(max_batches):
-        for slot in range(n_slots):
-            for position in range(1, n_jobs - 1):
-                model.addConstr(
-                    U[batch, slot, position]
-                    >= U[batch, slot, position - 1] + U[batch, slot, position + 1] - 1
-                )
+    # Formula (10): ordinal index of the batch-time-slot pair assigned to each position.
+    # Paper indices are one-based, so (l - 1)B + b becomes lB + (b + 1) in Python.
+    for position in range(n_jobs):
+        model.addConstr(
+            kr[position]
+            == gp.quicksum(
+                (slot * max_batches + batch + 1) * U[batch, slot, position]
+                for slot in range(n_slots)
+                for batch in range(max_batches)
+            )
+        )
 
     # Formula (11): link X, U, and x.
     for batch in range(max_batches):
@@ -186,18 +190,9 @@ def build_model(time_limit: float = 3600.0) -> Any:
                         U[batch, slot, position] >= X[batch, slot, job] + x[job, position] - 1
                     )
 
-    # Formula (13): keep the time-slot index nondecreasing with position.
+    # Formula (13): keep the batch-time-slot ordinal index nondecreasing with position.
     for position in range(n_jobs - 1):
-        model.addConstr(
-            gp.quicksum(
-                (slot + 1) * gp.quicksum(U[batch, slot, position] for batch in range(max_batches))
-                for slot in range(n_slots)
-            )
-            <= gp.quicksum(
-                (slot + 1) * gp.quicksum(U[batch, slot, position + 1] for batch in range(max_batches))
-                for slot in range(n_slots)
-            )
-        )
+        model.addConstr(kr[position] <= kr[position + 1])
 
     # Formula (14): define whether batch b in time slot l is occupied.
     for batch in range(max_batches):
@@ -215,26 +210,14 @@ def build_model(time_limit: float = 3600.0) -> Any:
         for position in range(n_jobs)
     ]
 
-    # Formula (15): preserve cumulative position order across time slots.
-    for position in range(n_jobs - 1):
-        for slot in range(n_slots - 1):
-            model.addConstr(
-                gp.quicksum(
-                    U[batch, previous_slot, position]
-                    for previous_slot in range(slot + 1)
-                    for batch in range(max_batches)
-                )
-                >= gp.quicksum(
-                    U[batch, previous_slot, position + 1]
-                    for previous_slot in range(slot + 1)
-                    for batch in range(max_batches)
-                )
-            )
-
-    # Formulas (16)-(17): position-dependent processing time contribution.
+    # Formulas (15)-(17): position-dependent processing time contribution.
     for batch in range(max_batches):
         for slot in range(n_slots):
             for position in range(n_jobs):
+                model.addConstr(
+                    V_blr[batch, slot, position]
+                    <= max_position_processing[position] * U[batch, slot, position]
+                )
                 model.addConstr(V_blr[batch, slot, position] <= position_processing[position])
                 model.addConstr(
                     V_blr[batch, slot, position]
