@@ -54,7 +54,6 @@ def build_model(time_limit: float = 3600.0) -> Any:
         model.setParam("TimeLimit", time_limit)
 
     # Binary variables
-    X = model.addVars(max_batches, n_slots, n_jobs, vtype=GRB.BINARY, name="X")
     Y = model.addVars(max_batches, n_slots, vtype=GRB.BINARY, name="Y")
     Z = model.addVars(n_slots, vtype=GRB.BINARY, name="Z")
     x = model.addVars(n_jobs, n_jobs, vtype=GRB.BINARY, name="x")
@@ -69,7 +68,6 @@ def build_model(time_limit: float = 3600.0) -> Any:
     V_blr = model.addVars(max_batches, n_slots, n_jobs, lb=0.0, vtype=GRB.CONTINUOUS, name="V_blr")
     t_ls = model.addVars(n_slots, lb=0.0, vtype=GRB.CONTINUOUS, name="t_ls")
     t_le = model.addVars(n_slots, lb=0.0, vtype=GRB.CONTINUOUS, name="t_le")
-    kr = model.addVars(n_jobs, lb=0.0, vtype=GRB.CONTINUOUS, name="kr")
 
     # Construct a unified but data-dependent Big-M
     prefix_slot_lengths = [0.0]
@@ -125,26 +123,15 @@ def build_model(time_limit: float = 3600.0) -> Any:
         GRB.MINIMIZE,
     )
 
-    # 2. Formula (4): each job is assigned to exactly one batch and one time slot
-    for job in range(n_jobs):
-        model.addConstr(
-            gp.quicksum(X[batch, slot, job] for batch in range(max_batches) for slot in range(n_slots)) == 1
-        )
-
-    # 3. Formula (5): capacity limit of each batch in each time slot
-    for batch in range(max_batches):
-        for slot in range(n_slots):
-            model.addConstr(gp.quicksum(X[batch, slot, job] for job in range(n_jobs)) <= batch_capacity)
-
-    # 4. Formula (6): each position is occupied by exactly one job
+    # 2. Formula (4): each position is occupied by exactly one job
     for position in range(n_jobs):
         model.addConstr(gp.quicksum(x[job, position] for job in range(n_jobs)) == 1)
 
-    # 5. Formula (7): each job is assigned to exactly one position
+    # 3. Formula (5): each job is assigned to exactly one position
     for job in range(n_jobs):
         model.addConstr(gp.quicksum(x[job, position] for position in range(n_jobs)) == 1)
 
-    # 6. Formula (8): each position is assigned to exactly one batch and one time slot
+    # 4. Formula (6): each position is assigned to exactly one batch and one time slot
     for position in range(n_jobs):
         model.addConstr(
             gp.quicksum(
@@ -155,54 +142,28 @@ def build_model(time_limit: float = 3600.0) -> Any:
             == 1
         )
 
-    # 7. Formula (9): link occupied positions with assigned jobs in each batch-time-slot pair
+    # 5. Formula (7): enforce batch capacity and activate Y when the batch is used
     for batch in range(max_batches):
         for slot in range(n_slots):
             model.addConstr(
                 gp.quicksum(U[batch, slot, position] for position in range(n_jobs))
-                == gp.quicksum(X[batch, slot, job] for job in range(n_jobs))
+                <= batch_capacity * Y[batch, slot]
             )
 
-    # 8. Formula (10): ordinal index of the batch-time-slot pair assigned to position r
-    for position in range(n_jobs):
+    # 6. Formula (8): keep the batch-time-slot ordinal index nondecreasing with r
+    for position in range(n_jobs - 1):
         model.addConstr(
-            kr[position]
-            == gp.quicksum(
+            gp.quicksum(
                 (slot * max_batches + batch + 1) * U[batch, slot, position]
-                for slot in range(n_slots)
                 for batch in range(max_batches)
+                for slot in range(n_slots)
+            )
+            <= gp.quicksum(
+                (slot * max_batches + batch + 1) * U[batch, slot, position + 1]
+                for batch in range(max_batches)
+                for slot in range(n_slots)
             )
         )
-
-    # 9. Formula (11): keep the batch-time-slot ordinal index nondecreasing with r
-    for position in range(n_jobs - 1):
-        model.addConstr(kr[position] <= kr[position + 1])
-
-    # 10. Formula (12): link X, U, and x
-    for batch in range(max_batches):
-        for slot in range(n_slots):
-            for job in range(n_jobs):
-                for position in range(n_jobs):
-                    model.addConstr(
-                        X[batch, slot, job] >= U[batch, slot, position] + x[job, position] - 1
-                    )
-
-    # 11. Formula (13): link U, X, and x
-    for batch in range(max_batches):
-        for slot in range(n_slots):
-            for job in range(n_jobs):
-                for position in range(n_jobs):
-                    model.addConstr(
-                        U[batch, slot, position] >= X[batch, slot, job] + x[job, position] - 1
-                    )
-
-    # 12. Formula (14): define whether batch b in time slot l is occupied
-    for batch in range(max_batches):
-        for slot in range(n_slots):
-            model.addConstr(
-                Y[batch, slot]
-                >= gp.quicksum(X[batch, slot, job] for job in range(n_jobs)) / batch_capacity
-            )
 
     # Position-dependent processing coefficient p_j f(r), where f(r)=(r+1)^a in the code.
     processing_coefficients = [
@@ -220,7 +181,7 @@ def build_model(time_limit: float = 3600.0) -> Any:
         for position in range(n_jobs)
     ]
 
-    # 13. Formula (15): first upper bound for V_blr
+    # 7. Formula (9): first upper bound for V_blr
     for batch in range(max_batches):
         for slot in range(n_slots):
             for position in range(n_jobs):
@@ -228,13 +189,13 @@ def build_model(time_limit: float = 3600.0) -> Any:
                     V_blr[batch, slot, position]
                     <= max_position_processing[position] * U[batch, slot, position]
                 )
-    # 14. Formula (16): second upper bound for V_blr
+    # 8. Formula (10): second upper bound for V_blr
     for batch in range(max_batches):
         for slot in range(n_slots):
             for position in range(n_jobs):
                 model.addConstr(V_blr[batch, slot, position] <= position_processing[position])
 
-    # 15. Formula (17): lower bound for V_blr
+    # 9. Formula (11): lower bound for V_blr
     for batch in range(max_batches):
         for slot in range(n_slots):
             for position in range(n_jobs):
@@ -243,7 +204,7 @@ def build_model(time_limit: float = 3600.0) -> Any:
                     >= position_processing[position] - big_m * (1 - U[batch, slot, position])
                 )
 
-    # 16. Formula (18): actual processing time of each batch
+    # 10. Formula (12): actual processing time of each batch
     for batch in range(max_batches):
         for slot in range(n_slots):
             model.addConstr(
@@ -252,58 +213,58 @@ def build_model(time_limit: float = 3600.0) -> Any:
                 + gp.quicksum(V_blr[batch, slot, position] for position in range(n_jobs))
             )
 
-    # 17. Formula (19): actual processing time of each time slot
+    # 11. Formula (13): actual processing time of each time slot
     for slot in range(n_slots):
         model.addConstr(P_l[slot] >= gp.quicksum(P_bl[batch, slot] for batch in range(max_batches)))
 
-    # 18. Formula (20): length limit of each time slot
+    # 12. Formula (14): length limit of each time slot
     for slot in range(n_slots):
         model.addConstr(P_l[slot] <= slot_lengths[slot])
 
-    # 19. Formula (21): ending machine age and initial starting age
+    # 13. Formula (15): ending machine age and initial starting age
     model.addConstr(t_ls[0] == 0)
     for slot in range(n_slots):
         model.addConstr(t_le[slot] == t_ls[slot] + P_l[slot])
 
-    # 20. Formula (22): machine age cannot exceed the previous ending age before reset
+    # 14. Formula (16): machine age cannot exceed the previous ending age before reset
     for slot in range(1, n_slots):
         model.addConstr(t_ls[slot] <= t_le[slot - 1])
 
-    # 21. Formula (23): reset starting age to zero if PM is performed
+    # 15. Formula (17): reset starting age to zero if PM is performed
     for slot in range(1, n_slots):
         model.addConstr(t_ls[slot] <= big_m * (1 - Q[slot - 1]))
 
-    # 22. Formula (24): inherit previous ending age if PM is not performed
+    # 16. Formula (18): inherit previous ending age if PM is not performed
     for slot in range(1, n_slots):
         model.addConstr(t_ls[slot] >= t_le[slot - 1] - big_m * Q[slot - 1])
 
-    # 23. Formula (25): expected CM cost evaluated at the ending machine age
+    # 17. Formula (19): expected CM cost evaluated at the ending machine age
     for slot in range(n_slots):
         model.addConstr(E_l[slot] == failure_scale * failure_rate * failure_cost_weight * t_le[slot])
 
-    # 24. Formula (26): first upper bound for G_l = E_l Z_l
+    # 18. Formula (20): first upper bound for G_l = E_l Z_l
     for slot in range(n_slots):
         model.addConstr(G_l[slot] <= E_l[slot])
 
-    # 25. Formula (27): second upper bound for G_l = E_l Z_l
+    # 19. Formula (21): second upper bound for G_l = E_l Z_l
     for slot in range(n_slots):
         model.addConstr(G_l[slot] <= big_m * Z[slot])
 
-    # 26. Formula (28): lower bound for G_l = E_l Z_l
+    # 20. Formula (22): lower bound for G_l = E_l Z_l
     for slot in range(n_slots):
         model.addConstr(G_l[slot] >= E_l[slot] - big_m * (1 - Z[slot]))
 
-    # 27. Formula (29): define whether time slot l is selected
+    # 21. Formula (23): activate time slot l when at least one batch is used
     for slot in range(n_slots):
         model.addConstr(
             Z[slot] >= gp.quicksum(Y[batch, slot] for batch in range(max_batches)) / max_batches
         )
 
-    # 28. Formula (30): binary domains
-    # X, Y, Z, x, U, and Q are declared as GRB.BINARY above.
+    # 22. Formula (24): binary domains
+    # Y, Z, x, U, and Q are declared as GRB.BINARY above.
 
-    # 29. Formula (31): nonnegative continuous domains
-    # P_bl, P_l, E_l, t_ls, t_le, V_blr, G_l, and kr are declared with lb=0.0 above.
+    # 23. Formula (25): nonnegative continuous domains
+    # P_bl, P_l, E_l, t_ls, t_le, V_blr, and G_l are declared with lb=0.0 above.
     return model
 
 
