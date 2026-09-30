@@ -169,7 +169,7 @@ def evaluate_schedule(schedule: Schedule) -> tuple[float, list[int]]:
         end = predecessor[end]
     breakpoints.reverse()
 
-    maintenance_slots = [selected_slots[index] for index in breakpoints[1:]]
+    maintenance_slots = [selected_slots[index - 1] for index in breakpoints[1:]]
     objective_value = best_cost[num_selected] - u
     return objective_value, maintenance_slots
 
