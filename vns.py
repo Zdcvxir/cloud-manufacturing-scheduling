@@ -35,6 +35,7 @@ CP_l = config.CP_l
 INFEASIBLE_COST = 1e6
 BLOCK_RATIO = 0.1
 BLOCK_LEN = max(1, math.ceil(BLOCK_RATIO * N))
+_DECODE_JOB_ORDER = tuple(sorted(range(1, N + 1), key=lambda job_id: p_j[job_id - 1], reverse=True))
 
 Schedule = dict[int, list[int]]
 Assignment = list[int]
@@ -52,7 +53,7 @@ def print_instance_summary() -> None:
 
 def sorted_jobs_by_processing_time() -> list[tuple[int, int]]:
     """Return jobs in non-increasing processing-time order."""
-    return sorted(((job_id + 1, p_j[job_id]) for job_id in range(N)), key=lambda item: item[1], reverse=True)
+    return [(job_id, p_j[job_id - 1]) for job_id in _DECODE_JOB_ORDER]
 
 
 def build_initial_solution() -> Schedule:
@@ -182,15 +183,14 @@ def encode_solution(slot_jobs: Schedule) -> Assignment:
 
 
 def decode_solution(assignment: Assignment) -> Schedule:
-    slot_jobs: Schedule = {slot: [] for slot in range(1, T + 1)}
-    for job_index, slot_id in enumerate(assignment):
+    slot_jobs: Schedule = {}
+    for job_id in _DECODE_JOB_ORDER:
+        slot_id = assignment[job_id - 1]
         if slot_id != 0:
-            slot_jobs[slot_id].append(job_index + 1)
-
-    for jobs in slot_jobs.values():
-        jobs.sort(key=lambda job_id: p_j[job_id - 1], reverse=True)
-
-    return {slot: jobs for slot, jobs in slot_jobs.items() if jobs}
+            if not 1 <= slot_id <= T:
+                raise KeyError(slot_id)
+            slot_jobs.setdefault(slot_id, []).append(job_id)
+    return {slot_id: slot_jobs[slot_id] for slot_id in sorted(slot_jobs)}
 
 
 def shake_n1(assignment: Assignment, start_time: float, time_limit: float) -> Assignment:
